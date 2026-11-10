@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Pose Replay</title></head><body>
+<h3>Pose Replay (minimal)</h3>
+<input type="file" id="file" accept=".ndjson,.json" />
+<br><canvas id="c" width=600 height=400 style="border:1px solid #ccc;"></canvas>
+<script>
+// Minimal replay: reads NDJSON of records {timestamp,module_id,position:{x,y,z},orientation:{...}}
+const fileEl = document.getElementById('file');
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('2d');
+let records = [];
+fileEl.addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader(); r.onload = ()=>{
+    const lines = r.result.split('\n').filter(Boolean);
+    records = lines.map(l=>JSON.parse(l));
+    startReplay();
+  }; r.readAsText(f);
+});
+function startReplay(){
+  if(!records.length) return alert('No records');
+  // group by module
+  const modules = {};
+  records.forEach(r=>{
+    if(!modules[r.module_id]) modules[r.module_id]=[];
+    modules[r.module_id].push(r);
+  });
+  const ids = Object.keys(modules);
+  const t0 = Math.min(...records.map(r=>r.timestamp));
+  const t1 = Math.max(...records.map(r=>r.timestamp));
+  const duration = t1-t0 || 1;
+  let start = performance.now();
+  function draw(){
+    const now = (performance.now()-start)/1000; // seconds
+    const t = t0 + (now % duration);
+    gl.clearRect(0,0,canvas.width,canvas.height);
+    // simple projection: x->x, y->z, ignore z
+    ids.forEach((id,idx)=>{
+      const recs = modules[id];
+      // find nearest by timestamp
+      let best = recs[0]; let mind=1e9;
+      for(const r of recs){ const d=Math.abs(r.timestamp-t); if(d<mind){mind=d;best=r}};
+      const pos = best.position || {x:0,y:0,z:0};
+      const x = 300 + pos.x*20; const y = 200 - pos.z*20; // map
+      // draw box
+      gl.fillStyle = 'hsl(' + (idx*60 % 360) + ',60%,50%)';
+      gl.fillRect(x-10,y-10,20,20);
+      gl.fillStyle='#000'; gl.fillText(id, x+12, y+4);
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+</script>
+</body></html>
